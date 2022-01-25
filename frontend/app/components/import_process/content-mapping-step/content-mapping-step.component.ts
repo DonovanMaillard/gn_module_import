@@ -175,8 +175,26 @@ export class ContentMappingStepComponent implements OnInit {
     this.n_aMapper = 0;
     this.stepData.contentMappingInfo.forEach(ele => {
       ele["nomenc_values_def"].forEach(nomenc => {
-        this.contentTargetForm.addControl(nomenc.id, new FormControl(""));
+        const control  = new FormControl();
+        this.contentTargetForm.addControl(nomenc.id, control);
         ++this.n_aMapper;
+        control.valueChanges.subscribe(currentValue => {          
+          if(ele.user_values.values) {
+            ele.user_values.values = ele.user_values.values.filter(el => {
+              let found = false;
+              if(currentValue) {
+                currentValue.forEach(element => {
+                  if(element.value == el.value) {
+                    found = true;
+                  }
+                });
+              }
+              return !found
+              
+            })
+
+          }
+        })
       });
     });
     this.showForm = true;
@@ -186,7 +204,7 @@ export class ContentMappingStepComponent implements OnInit {
     return c1 && c2 ? c1.id_mapping === c2.id_mapping : c1 === c2;
   }
 
-  onSelectChange(selectedVal, group, formControlName) {
+  onSelectChange(selectedVal, group, formControlName) {    
     this.stepData.contentMappingInfo.map(ele => {
       if (ele.nomenc_abbr === group.nomenc_abbr) {
         ele.user_values.values = ele.user_values.values.filter(value => {
@@ -196,21 +214,8 @@ export class ContentMappingStepComponent implements OnInit {
     });
   }
 
-  onSelectDelete(deletedVal, group, formControlName) {
-    this.stepData.contentMappingInfo.map(ele => {
-      if (ele.nomenc_abbr === group.nomenc_abbr) {
-        let temp_array = ele.user_values.values;
-        temp_array.push(deletedVal);
-        ele.user_values.values = temp_array.slice(0);
-      }
-    });
-
-    // modify contentTargetForm control values
-    let values = this.contentTargetForm.controls[formControlName].value;
-    values = values.filter(value => {
-      return value.id != deletedVal.id;
-    });
-    this.contentTargetForm.controls[formControlName].setValue(values);
+  onSelectDelete(deletedVal, values) {
+    values.push(deletedVal.value)
   }
 
   displayError(message) {
@@ -309,8 +314,48 @@ export class ContentMappingStepComponent implements OnInit {
 
   fillMapping(id_mapping) {
     this.id_mapping = id_mapping;
-    this._ds.getMappingContents(id_mapping).subscribe(mappingContents => {
-      this.fillFormFromMappings(mappingContents)
+    this._ds.getMappingContents(id_mapping).subscribe(mappingContents => { 
+      this.contentTargetForm.reset();
+      if (mappingContents[0] != "empty") {
+
+        this.n_mappes = 0;
+        for (let content of mappingContents) {          
+          let arrayVal: any = [];
+
+          for (let val of content) {
+            if (val["source_value"] != "") {
+              let id_info = this.getId(
+                val["source_value"],
+                val["id_target_value"]
+              );
+              arrayVal.push({ id: id_info, value: val["source_value"] });
+            }
+          }
+          const formControl = this.contentTargetForm.get(
+            String(content[0]["id_target_value"])
+          );
+
+          if (formControl) {
+            formControl.patchValue(arrayVal)
+            this.n_mappes = this.n_mappes + 1;
+          }
+
+        }
+      } else {
+        this.contentTargetForm.reset();
+        this.n_mappes = -1;
+      }
+      this.n_aMapper = 0;
+      for (let contentMapping of this.stepData.contentMappingInfo) {
+        this.n_aMapper += contentMapping.user_values.values.filter(
+          val => val.value
+        ).length;
+        this.n_mappes -= contentMapping.user_values.values.filter(
+          val => val.value
+        ).length;
+      }
+      // at the end set the formgroup as pristine
+      this.contentTargetForm.markAsPristine();
     }),
       error => {
         if (error.statusText === "Unknown Error") {
